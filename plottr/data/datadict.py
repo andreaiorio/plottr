@@ -89,6 +89,16 @@ class DataDictBase(dict):
         else:
             return datasets_are_equal(self, other)
 
+    def __repr__(self) -> str:
+        ret = ""
+        for i, dn in enumerate(self.dependents()):
+            if i > 0:
+                ret += "\n"
+            ret += f"{self.label(dn)}: {self[dn]['values'].shape}"
+            for ax in self.axes(dn):
+                ret += f"\n  \u2319 {self.label(ax)}: {self[ax]['values'].shape}"
+        return ret
+
     # Assignment and retrieval of data and meta data
 
     @staticmethod
@@ -144,6 +154,7 @@ class DataDictBase(dict):
                         is_common = False
                 if is_common:
                     commons.append(n)
+
         nrecs = max(commons)
 
         for k, v in records.items():
@@ -770,7 +781,7 @@ class DataDict(DataDictBase):
                 kw[name] = None
 
         records = self.to_records(**kw)
-        for name, datavals in records.items():  #
+        for name, datavals in records.items():
             dd[name]['values'] = datavals
 
         if dd.validate():
@@ -954,10 +965,11 @@ class DataDict(DataDictBase):
             except TypeError:
                 pass
 
-            idxs.append(_idxs.astype(int))
+            idxs.append(_idxs)
 
         if len(idxs) > 0:
-            remove_idxs = reduce(np.intersect1d, tuple(idxs))
+            remove_idxs = reduce(np.intersect1d,
+                                 tuple(np.array(idxs).astype(int)))
             for k, v in ret.data_items():
                 v['values'] = np.delete(v['values'], remove_idxs, axis=0)
 
@@ -1010,7 +1022,10 @@ class MeshgridDataDict(DataDictBase):
 
         shp = None
         shpsrc = ''
-        for n, v in self.data_items():
+
+        data_items = dict(self.data_items())
+
+        for n, v in data_items.items():
             if type(v['values']) not in [np.ndarray, np.ma.core.MaskedArray]:
                 self[n]['values'] = np.array(v['values'])
 
@@ -1022,6 +1037,20 @@ class MeshgridDataDict(DataDictBase):
                     msg += f" * shapes need to match, but '{n}' has"
                     msg += f" {v['values'].shape}, "
                     msg += f"and '{shpsrc}' has {shp}.\n"
+
+            if 'axes' in v:
+                for axis_num, na in enumerate(v['axes']):
+                    # check that the data of the axes matches its use
+                    # if data present
+                    axis_data = data_items[na]['values']
+                    if axis_data.size > 0:
+                        max_step_along_axes = np.max(np.abs(np.diff(data_items[na]['values'],axis=axis_num)))
+                        if max_step_along_axes == 0:
+                            msg += (f"Malformed data: {na} is expected to be {axis_num}th "
+                                     "axis but has no variation along that axis.\n")
+
+            if '__shape__' in v:
+                v['__shape__'] = shp
 
             if msg != '\n':
                 raise ValueError(msg)
@@ -1087,7 +1116,7 @@ def guess_shape_from_datadict(data: DataDict) -> \
 
 def datadict_to_meshgrid(data: DataDict,
                          target_shape: Union[Tuple[int, ...], None] = None,
-                         inner_axis_order: Union[None, List[str]] = None,
+                         inner_axis_order: Union[None, Sequence[str]] = None,
                          use_existing_shape: bool = False) \
         -> MeshgridDataDict:
     """

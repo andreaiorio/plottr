@@ -363,10 +363,12 @@ class DimensionReductionAssignmentWidget(DimensionAssignmentWidget):
         roles = self.getRoles()
         axidx = self._dataStructure.axes().index(dim)
         naxvals = self._dataShapes[dim][axidx]
-        idx = roles[dim]['options']['index']
-        text = f"({idx + 1}/{naxvals})"
-        if value is not None:
-            text = value + ' ' + text
+        text = ''
+        if 'index' in roles[dim]['options']:
+            idx = roles[dim]['options']['index']
+            text = f"({idx + 1}/{naxvals})"
+            if value is not None:
+                text = value + ' ' + text
         self.setDimInfo(dim, text)
 
 
@@ -498,7 +500,7 @@ class DimensionReducer(Node):
     def reductions(self) -> Dict[str, Optional[ReductionType]]:
         return self._reductions
 
-    @reductions.setter  # type: ignore[misc]
+    @reductions.setter
     @updateOption('reductions')
     def reductions(self, val: Dict[str, Optional[ReductionType]]) -> None:
         self._reductions = val
@@ -507,7 +509,7 @@ class DimensionReducer(Node):
     def targetNames(self) -> Optional[List[str]]:
         return self._targetNames
 
-    @targetNames.setter  # type: ignore[misc]
+    @targetNames.setter
     @updateOption()
     def targetNames(self, val: Optional[List[str]]) -> None:
         self._targetNames = val
@@ -516,7 +518,7 @@ class DimensionReducer(Node):
     def reductionValues(self) -> Dict[str, float]:
         return self._reductionValues
 
-    @reductionValues.setter # type: ignore[misc]
+    @reductionValues.setter
     @updateOption('reductionValues')
     def reductionValues(self, val: Dict[str, float]) -> None:
         self._reductionValues = val
@@ -533,7 +535,7 @@ class DimensionReducer(Node):
             dnames = data.dependents()
 
         if not isinstance(data, MeshgridDataDict):
-            self.logger().debug(f"Data is not on a grid. "
+            self.node_logger.debug(f"Data is not on a grid. "
                                 f"Reduction functions are ignored, "
                                 f"axes will simply be removed.")
 
@@ -548,7 +550,7 @@ class DimensionReducer(Node):
                 try:
                     idx = data[n]['axes'].index(ax)
                 except IndexError:
-                    self.logger().info(f'{ax} specified for reduction, '
+                    self.node_logger.info(f'{ax} specified for reduction, '
                                        f'but not present in data; ignore.')
 
                 kw['axis'] = idx
@@ -572,7 +574,7 @@ class DimensionReducer(Node):
                         raise RuntimeError("Reduction function is None")
                     newvals = funCall(data[n]['values'], *arg, **kw)
                     if newvals.shape != targetShape:
-                        self.logger().error(
+                        self.node_logger.error(
                             f'Reduction on axis {ax} did not result in the '
                             f'right data shape. ' +
                             f'Expected {targetShape} but got {newvals.shape}.'
@@ -595,8 +597,7 @@ class DimensionReducer(Node):
         data = data.sanitize()
         data.validate()
         if self.reductionValues != reductionValues:
-            self.reductionValues = reductionValues  # type: ignore[misc]
-            # Open bug: https://github.com/python/mypy/issues/1465
+            self.reductionValues = reductionValues
         return data
 
     def validateOptions(self, data: DataDictBase) -> bool:
@@ -611,13 +612,13 @@ class DimensionReducer(Node):
         for ax, reduction in self._reductions.items():
 
             if ax not in data.axes():
-                self.logger().warning(f"{ax} is not a known dimension. Removing.")
+                self.node_logger.warning(f"{ax} is not a known dimension. Removing.")
                 delete.append(ax)
                 continue
 
             if reduction is None:
                 if isinstance(data, MeshgridDataDict):
-                    self.logger().warning(f'Reduction for axis {ax} is None. '
+                    self.node_logger.warning(f'Reduction for axis {ax} is None. '
                                           f'Removing.')
                     delete.append(ax)
                 else:
@@ -636,13 +637,13 @@ class DimensionReducer(Node):
                     arg = reduction[1]
                     kw = reduction[2]
             except:
-                self.logger().warning(
+                self.node_logger.warning(
                     f'Reduction for axis {ax} not in the right format.'
                 )
                 return False
 
             if not callable(fun) and not isinstance(fun, ReductionMethod):
-                self.logger().error(
+                self.node_logger.error(
                     f'Invalid reduction method for axis {ax}. '
                     f'Needs to be callable or a ReductionMethod type.'
                 )
@@ -651,7 +652,7 @@ class DimensionReducer(Node):
             # reduction methods are only defined for grid data.
             # remove reduction methods if we're not on a grid.
             if isinstance(fun, ReductionMethod) and not isinstance(data, MeshgridDataDict):
-                self.logger().info(f'Reduction set for axis {ax} is only suited for '
+                self.node_logger.info(f'Reduction set for axis {ax} is only suited for '
                                    f'grid data. Removing.')
                 delete.append(ax)
                 continue
@@ -779,7 +780,7 @@ class XYSelector(DimensionReducer):
     def xyAxes(self) -> Tuple[Optional[str], Optional[str]]:
         return self._xyAxes
 
-    @xyAxes.setter  # type: ignore[misc]
+    @xyAxes.setter
     @updateOption('xyAxes')
     def xyAxes(self, val: Tuple[Optional[str], Optional[str]]) -> None:
         self._xyAxes = val
@@ -795,7 +796,7 @@ class XYSelector(DimensionReducer):
             dr[dim] = red
         return dr
 
-    @dimensionRoles.setter  # type: ignore[misc]
+    @dimensionRoles.setter
     @updateOption('dimensionRoles')
     def dimensionRoles(self, val: Dict[str, str]) -> None:
         x = None
@@ -826,22 +827,22 @@ class XYSelector(DimensionReducer):
 
         if len(availableAxes) > 0:
             if self._xyAxes[0] is None:
-                self.logger().debug(
+                self.node_logger.debug(
                     f'x-Axis is None. this will result in empty output data.')
                 return False
             elif self._xyAxes[0] not in availableAxes:
-                self.logger().warning(
+                self.node_logger.warning(
                     f'x-Axis {self._xyAxes[0]} not present in data')
                 return False
 
             if self._xyAxes[1] is None:
-                self.logger().debug(f'y-Axis is None; result will be 1D')
+                self.node_logger.debug(f'y-Axis is None; result will be 1D')
             elif self._xyAxes[1] not in availableAxes:
-                self.logger().warning(
+                self.node_logger.warning(
                     f'y-Axis {self._xyAxes[1]} not present in data')
                 return False
             elif self._xyAxes[1] == self._xyAxes[0]:
-                self.logger().warning(f"y-Axis cannot be equal to x-Axis.")
+                self.node_logger.warning(f"y-Axis cannot be equal to x-Axis.")
                 return False
 
         # below we actually mess with the reduction options, but
@@ -853,7 +854,7 @@ class XYSelector(DimensionReducer):
         delete = []
         for n, _ in self._reductions.items():
             if n in self._xyAxes:
-                self.logger().debug(
+                self.node_logger.debug(
                     f"{n} has been selected as axis, cannot be reduced.")
                 delete.append(n)
         for n in delete:
@@ -864,7 +865,7 @@ class XYSelector(DimensionReducer):
         for ax in availableAxes:
             if ax not in self._xyAxes:
                 if ax not in self._reductions:
-                    self.logger().debug(
+                    self.node_logger.debug(
                         f"{ax} must be reduced. "
                         f"Default to selecting first element.")
 
